@@ -1,0 +1,25 @@
+{
+  "config": {
+      "step": {
+          "user": {
+              "data": {
+                  "cpf": "CPF"
+              },
+              "title": "Configurar IPTU Tubarão",
+              "description": "Insira o CPF para consultar débitos.",
+              "submit": "Enviar"
+          }
+      },
+      "error": {
+          "cpf_exists": "Esse CPF já está configurado."
+      }
+  },
+  "options": {
+      "step": {
+          "init": {
+              "title": "Opções de IPTU Tubarão",
+              "description": "Atualize o CPF ou outras configurações."
+          }
+      }
+  }
+}
