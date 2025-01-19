@@ -29,8 +29,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         IptuTubaraoSensorNome(coordinator, cpf),
         IptuTubaraoSensorStatus(coordinator, cpf)
     ]
-    async_add_entities(entities, update_before_add=True)
 
+    if coordinator.data.get("tem_debitos"):
+        entities.extend([
+            IptuTubaraoSensorValoresTotais(coordinator, cpf),
+            IptuTubaraoSensorValorTotalUnica(coordinator, cpf)
+        ])
+
+    async_add_entities(entities, update_before_add=True)
 
 class IptuTubaraoCoordinator(DataUpdateCoordinator):
     """Coordenador que faz a requisição ao site periodicamente."""
@@ -70,19 +76,26 @@ class IptuTubaraoCoordinator(DataUpdateCoordinator):
         try:
             response = await self._session.post(url, data=form_data, timeout=30)
             response.raise_for_status()
-            
-            # Verifica se o CPF é inválido
-            if "As informações de acesso estão inválidas." in response.text:
-                _LOGGER.error("CPF inválido fornecido: %s", self._cpf)
-                raise ValueError("As informações de acesso estão inválidas.")
-
         except Exception as err:
             _LOGGER.error("Erro ao enviar CPF: %s", err)
             raise
 
         soup = BeautifulSoup(response.text, "html.parser")
         tem_debitos = "Não foram localizados débitos" not in soup.get_text()
-        mensagem = "Nenhum débito encontrado" if not tem_debitos else "Foi localizado algum débito!"
+
+        valores_totais = None
+        valor_total_unica = None
+
+        if tem_debitos:
+            # Extrair valores de débitos
+            try:
+                valores_totais_element = soup.select_one("td.text-nowrap div[align='right']")
+                valores_totais = float(valores_totais_element.text.replace(".", "").replace(",", ".")) if valores_totais_element else 0
+
+                valor_total_unica_element = soup.select("td[align='right']")[-1]
+                valor_total_unica = float(valor_total_unica_element.text.replace(".", "").replace(",", ".")) if valor_total_unica_element else 0
+            except Exception as err:
+                _LOGGER.error("Erro ao processar valores de débitos: %s", err)
 
         # Busca o nome no local correto
         nome_element = soup.select_one("span.mr-2.d-none.d-lg-inline.text-gray-600.small")
@@ -91,9 +104,12 @@ class IptuTubaraoCoordinator(DataUpdateCoordinator):
         return {
             "cpf_formatado": self._formatar_cpf(self._cpf),
             "tem_debitos": tem_debitos,
-            "mensagem": mensagem,
+            "mensagem": "Nenhum débito encontrado" if not tem_debitos else "Foi localizado algum débito!",
             "proprietario": nome_proprietario,
+            "valores_totais": valores_totais,
+            "valor_total_unica": valor_total_unica,
         }
+
 
     @staticmethod
     def _formatar_cpf(cpf: str) -> str:
@@ -136,35 +152,70 @@ class IptuTubaraoSensorNome(CoordinatorEntity, SensorEntity):
         return self.coordinator.data.get("proprietario")
 
 
-class IptuTubaraoSensorStatus(CoordinatorEntity, SensorEntity):
-    """Sensor que indica o status de débitos."""
+    class IptuTubaraoSensorStatus(CoordinatorEntity, SensorEntity):
+        """Sensor que indica o status de débitos."""
 
-    def __init__(self, coordinator: IptuTubaraoCoordinator, cpf: str):
-        """Inicializa o sensor."""
-        super().__init__(coordinator)
-        self._cpf = cpf
-        self._attr_unique_id = f"iptu_tubarao_status_{cpf}"
-        self._attr_name = f"IPTU Tubarão Status ({cpf})"
-        self._attr_icon = "mdi:alert"
+        def __init__(self, coordinator: IptuTubaraoCoordinator, cpf: str):
+            """Inicializa o sensor."""
+            super().__init__(coordinator)
+            self._cpf = cpf
+            self._attr_unique_id = f"iptu_tubarao_status_{cpf}"
+            self._attr_name = f"IPTU Tubarão Status ({cpf})"
+            self._attr_icon = "mdi:alert"
 
-    @property
-    def native_value(self):
-        """Retorna o status de débitos."""
-        return "com_debito" if self.coordinator.data.get("tem_debitos") else "sem_debito"
+        @property
+        def native_value(self):
+            """Retorna o status de débitos."""
+            return "com_debito" if self.coordinator.data.get("tem_debitos") else "sem_debito"
 
-    @property
-    def extra_state_attributes(self):
-        """Retorna detalhes extras, como a mensagem."""
-        return {
-            "mensagem": self.coordinator.data.get("mensagem", "")
-        }
+        @property
+        def extra_state_attributes(self):
+            """Retorna detalhes extras, como a mensagem."""
+            return {
+                "mensagem": self.coordinator.data.get("mensagem", "")
+            }
 
-    @property
-    def device_info(self) -> DeviceInfo:
-        """Agrupa como dispositivo no Home Assistant."""
-        return DeviceInfo(
-            identifiers={(DOMAIN, self._cpf)},
-            name=f"IPTU Tubarão ({self._cpf})",
-            manufacturer="Prefeitura de Tubarão",
-            model="Consulta IPTU Online",
-        )
+        @property
+        def device_info(self) -> DeviceInfo:
+            """Agrupa como dispositivo no Home Assistant."""
+            return DeviceInfo(
+                identifiers={(DOMAIN, self._cpf)},
+                name=f"IPTU Tubarão ({self._cpf})",
+                manufacturer="Prefeitura de Tubarão",
+                model="Consulta IPTU Online",
+            )
+
+    class IptuTubaraoSensorValoresTotais(CoordinatorEntity, SensorEntity):
+        """Sensor que exibe os valores totais de débitos."""
+
+        def __init__(self, coordinator: IptuTubaraoCoordinator, cpf: str):
+            """Inicializa o sensor."""
+            super().__init__(coordinator)
+            self._cpf = cpf
+            self._attr_unique_id = f"iptu_tubarao_valores_totais_{cpf}"
+            self._attr_name = f"Valores Totais ({cpf})"
+            self._attr_unit_of_measurement = "R$"
+            self._attr_icon = "mdi:currency-usd"
+
+        @property
+        def native_value(self):
+            """Retorna os valores totais."""
+            return self.coordinator.data.get("valores_totais")
+
+
+    class IptuTubaraoSensorValorTotalUnica(CoordinatorEntity, SensorEntity):
+        """Sensor que exibe o valor total à vista."""
+
+        def __init__(self, coordinator: IptuTubaraoCoordinator, cpf: str):
+            """Inicializa o sensor."""
+            super().__init__(coordinator)
+            self._cpf = cpf
+            self._attr_unique_id = f"iptu_tubarao_valor_total_unica_{cpf}"
+            self._attr_name = f"Valor Total Única ({cpf})"
+            self._attr_unit_of_measurement = "R$"
+            self._attr_icon = "mdi:currency-usd"
+
+        @property
+        def native_value(self):
+            """Retorna o valor total à vista."""
+            return self.coordinator.data.get("valor_total_unica")
