@@ -24,11 +24,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     # Faz update inicial
     await coordinator.async_config_entry_first_refresh()
 
-    async_add_entities([
+    entities = [
         IptuTubaraoSensorCPF(coordinator, cpf),
         IptuTubaraoSensorNome(coordinator, cpf),
         IptuTubaraoSensorStatus(coordinator, cpf)
-    ], update_before_add=True)
+    ]
+    async_add_entities(entities, update_before_add=True)
 
 
 class IptuTubaraoCoordinator(DataUpdateCoordinator):
@@ -77,7 +78,7 @@ class IptuTubaraoCoordinator(DataUpdateCoordinator):
         tem_debitos = "Não foram localizados débitos" not in soup.get_text()
         mensagem = "Nenhum débito encontrado" if not tem_debitos else "Foi localizado algum débito!"
 
-        # Busca o nome no novo local
+        # Busca o nome no local correto
         nome_element = soup.select_one("span.mr-2.d-none.d-lg-inline.text-gray-600.small")
         nome_proprietario = nome_element.get_text(strip=True) if nome_element else "Desconhecido"
 
@@ -98,19 +99,13 @@ class IptuTubaraoCoordinator(DataUpdateCoordinator):
 class IptuTubaraoSensorCPF(CoordinatorEntity, SensorEntity):
     """Sensor que exibe o CPF formatado."""
 
-    _attr_has_entity_name = True
-    _attr_icon = "mdi:account"
-
     def __init__(self, coordinator: IptuTubaraoCoordinator, cpf: str):
         """Inicializa o sensor."""
         super().__init__(coordinator)
         self._cpf = cpf
         self._attr_unique_id = f"iptu_tubarao_cpf_{cpf}"
-
-    @property
-    def name(self):
-        """Nome do sensor."""
-        return f"IPTU Tubarão CPF ({self._cpf})"
+        self._attr_name = f"IPTU Tubarão CPF ({cpf})"
+        self._attr_icon = "mdi:account"
 
     @property
     def native_value(self):
@@ -121,18 +116,13 @@ class IptuTubaraoSensorCPF(CoordinatorEntity, SensorEntity):
 class IptuTubaraoSensorNome(CoordinatorEntity, SensorEntity):
     """Sensor que exibe o nome do proprietário."""
 
-    _attr_has_entity_name = True
-    _attr_icon = "mdi:account-badge"
-
     def __init__(self, coordinator: IptuTubaraoCoordinator, cpf: str):
         """Inicializa o sensor."""
         super().__init__(coordinator)
+        self._cpf = cpf
         self._attr_unique_id = f"iptu_tubarao_nome_{cpf}"
-
-    @property
-    def name(self):
-        """Nome do sensor."""
-        return f"IPTU Tubarão Nome ({self._cpf})"
+        self._attr_name = f"IPTU Tubarão Nome ({cpf})"
+        self._attr_icon = "mdi:account-badge"
 
     @property
     def native_value(self):
@@ -143,18 +133,13 @@ class IptuTubaraoSensorNome(CoordinatorEntity, SensorEntity):
 class IptuTubaraoSensorStatus(CoordinatorEntity, SensorEntity):
     """Sensor que indica o status de débitos."""
 
-    _attr_has_entity_name = True
-    _attr_icon = "mdi:alert"
-
     def __init__(self, coordinator: IptuTubaraoCoordinator, cpf: str):
         """Inicializa o sensor."""
         super().__init__(coordinator)
+        self._cpf = cpf
         self._attr_unique_id = f"iptu_tubarao_status_{cpf}"
-
-    @property
-    def name(self):
-        """Nome do sensor."""
-        return f"IPTU Tubarão Status ({self._cpf})"
+        self._attr_name = f"IPTU Tubarão Status ({cpf})"
+        self._attr_icon = "mdi:alert"
 
     @property
     def native_value(self):
@@ -170,9 +155,9 @@ class IptuTubaraoSensorStatus(CoordinatorEntity, SensorEntity):
 
     @property
     def device_info(self) -> DeviceInfo:
-        """Agrupa como dispositivo no HA."""
+        """Agrupa como dispositivo no Home Assistant."""
         return DeviceInfo(
-            identifiers={(DOMAIN, self.coordinator.data.get("cpf_formatado"))},
+            identifiers={(DOMAIN, self._cpf)},
             name=f"IPTU Tubarão ({self._cpf})",
             manufacturer="Prefeitura de Tubarão",
             model="Consulta IPTU Online",
