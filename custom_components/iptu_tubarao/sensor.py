@@ -1,4 +1,3 @@
-"""Sensor que consulta se há débitos no IPTU Tubarão."""
 import logging
 import httpx
 from bs4 import BeautifulSoup
@@ -7,8 +6,6 @@ from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity, DataUpdateCoordinator
 from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
-
-from . import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -20,23 +17,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     cpf = entry.data.get("cpf")
 
     coordinator = IptuTubaraoCoordinator(hass, cpf=cpf)
-    
+
     # Faz update inicial
     await coordinator.async_config_entry_first_refresh()
 
-    # Sempre cria os sensores básicos
+    # Criação dos sensores
     entities = [
         IptuTubaraoSensorCPF(coordinator, cpf),
         IptuTubaraoSensorNome(coordinator, cpf),
         IptuTubaraoSensorStatus(coordinator, cpf),
-    ]
-
-    # Cria sensores adicionais conforme os valores retornados
-    entities.extend([
         IptuTubaraoSensorValorTotalSemJuros(coordinator, cpf),
-        IptuTubaraoSensorValorTotalTaxaUnica(coordinator, cpf),
+        IptuTubaraoSensorValorTaxaUnica(coordinator, cpf),
         IptuTubaraoSensorValorTotalSemDesconto(coordinator, cpf),
-    ])
+    ]
 
     async_add_entities(entities, update_before_add=True)
 
@@ -83,31 +76,35 @@ class IptuTubaraoCoordinator(DataUpdateCoordinator):
 
         soup = BeautifulSoup(response.text, "html.parser")
 
-        # Localizar os valores conforme o layout atualizado
-        try:
-            valores_totais_element = soup.find(string="VALORES TOTAIS:").find_next("div")
-            valores_totais = float(valores_totais_element.text.strip().replace(".", "").replace(",", ".")) if valores_totais_element else 0
+        # Processamento dos valores
+        valores = {"valores_totais": 0, "valor_total_unica": 0, "valor_total_sem_desconto": 0}
+        tem_debitos = "Não foram localizados débitos" not in soup.get_text()
 
-            valor_total_taxa_unica_element = soup.find(string="VALOR TOTAL ÚNICA:").find_next("div")
-            valor_total_taxa_unica = float(valor_total_taxa_unica_element.text.strip().replace(".", "").replace(",", ".")) if valor_total_taxa_unica_element else 0
+        if tem_debitos:
+            try:
+                # VALORES TOTAIS
+                valores_totais_element = soup.find("td", string="VALORES TOTAIS:").find_next("td")
+                valores["valores_totais"] = float(valores_totais_element.text.replace(".", "").replace(",", "."))
 
-            valor_total_sem_desconto_element = soup.find(string="VALOR SEM DESCONTO:").find_next("div")
-            valor_total_sem_desconto = float(valor_total_sem_desconto_element.text.strip().replace(".", "").replace(",", ".")) if valor_total_sem_desconto_element else 0
-        except Exception as err:
-            _LOGGER.error("Erro ao processar os valores: %s", err)
-            valores_totais = valor_total_taxa_unica = valor_total_sem_desconto = 0
+                # VALOR TOTAL ÚNICA
+                valor_total_unica_element = soup.find("td", string="VALOR TOTAL ÚNICA:").find_next("td")
+                valores["valor_total_unica"] = float(valor_total_unica_element.text.replace(".", "").replace(",", "."))
+
+                # VALOR TOTAL SEM DESCONTO
+                valor_total_sem_desconto_element = soup.find("td", string="VALOR SEM DESCONTO:").find_next("td")
+                valores["valor_total_sem_desconto"] = float(valor_total_sem_desconto_element.text.replace(".", "").replace(",", "."))
+            except Exception as err:
+                _LOGGER.error("Erro ao processar valores: %s", err)
 
         nome_element = soup.select_one("span.mr-2.d-none.d-lg-inline.text-gray-600.small")
         nome_proprietario = nome_element.get_text(strip=True) if nome_element else "Desconhecido"
 
         return {
             "cpf_formatado": self._formatar_cpf(self._cpf),
-            "tem_debitos": valores_totais > 0,
-            "mensagem": "Nenhum débito encontrado" if valores_totais == 0 else "Foi localizado algum débito!",
+            "tem_debitos": tem_debitos,
+            "mensagem": "Nenhum débito encontrado" if not tem_debitos else "Débitos localizados",
             "proprietario": nome_proprietario,
-            "valores_totais": valores_totais,
-            "valor_total_taxa_unica": valor_total_taxa_unica,
-            "valor_total_sem_desconto": valor_total_sem_desconto,
+            **valores,
         }
 
     @staticmethod
@@ -119,26 +116,53 @@ class IptuTubaraoCoordinator(DataUpdateCoordinator):
 
 class IptuTubaraoSensorCPF(CoordinatorEntity, SensorEntity):
     """Sensor que exibe o CPF formatado."""
-    # Sem alterações.
+
+    def __init__(self, coordinator: IptuTubaraoCoordinator, cpf: str):
+        super().__init__(coordinator)
+        self._attr_unique_id = f"iptu_tubarao_cpf_{cpf}"
+        self._attr_name = f"IPTU Tubarão CPF ({cpf})"
+        self._attr_icon = "mdi:account"
+
+    @property
+    def native_value(self):
+        return self.coordinator.data.get("cpf_formatado")
 
 
 class IptuTubaraoSensorNome(CoordinatorEntity, SensorEntity):
     """Sensor que exibe o nome do proprietário."""
-    # Sem alterações.
+
+    def __init__(self, coordinator: IptuTubaraoCoordinator, cpf: str):
+        super().__init__(coordinator)
+        self._attr_unique_id = f"iptu_tubarao_nome_{cpf}"
+        self._attr_name = f"IPTU Tubarão Nome ({cpf})"
+        self._attr_icon = "mdi:account-badge"
+
+    @property
+    def native_value(self):
+        return self.coordinator.data.get("proprietario")
 
 
 class IptuTubaraoSensorStatus(CoordinatorEntity, SensorEntity):
     """Sensor que indica o status de débitos."""
-    # Sem alterações.
-
-
-class IptuTubaraoSensorValorTotalSemJuros(CoordinatorEntity, SensorEntity):
-    """Sensor que exibe os valores totais sem juros."""
 
     def __init__(self, coordinator: IptuTubaraoCoordinator, cpf: str):
         super().__init__(coordinator)
-        self._attr_unique_id = f"iptu_tubarao_valor_total_sem_juros_{cpf}"
-        self._attr_name = f"Valor Total Sem Juros ({cpf})"
+        self._attr_unique_id = f"iptu_tubarao_status_{cpf}"
+        self._attr_name = f"IPTU Tubarão Status ({cpf})"
+        self._attr_icon = "mdi:alert"
+
+    @property
+    def native_value(self):
+        return "com_debito" if self.coordinator.data.get("tem_debitos") else "sem_debito"
+
+
+class IptuTubaraoSensorValorTotalSemJuros(CoordinatorEntity, SensorEntity):
+    """Sensor para valores totais sem juros."""
+
+    def __init__(self, coordinator: IptuTubaraoCoordinator, cpf: str):
+        super().__init__(coordinator)
+        self._attr_unique_id = f"iptu_tubarao_valores_totais_{cpf}"
+        self._attr_name = f"Valores Totais Sem Juros ({cpf})"
         self._attr_unit_of_measurement = "R$"
         self._attr_icon = "mdi:currency-usd"
 
@@ -147,23 +171,23 @@ class IptuTubaraoSensorValorTotalSemJuros(CoordinatorEntity, SensorEntity):
         return self.coordinator.data.get("valores_totais")
 
 
-class IptuTubaraoSensorValorTotalTaxaUnica(CoordinatorEntity, SensorEntity):
-    """Sensor que exibe o valor total da taxa única."""
+class IptuTubaraoSensorValorTaxaUnica(CoordinatorEntity, SensorEntity):
+    """Sensor para o valor total à vista."""
 
     def __init__(self, coordinator: IptuTubaraoCoordinator, cpf: str):
         super().__init__(coordinator)
-        self._attr_unique_id = f"iptu_tubarao_valor_total_taxa_unica_{cpf}"
-        self._attr_name = f"Valor Total Taxa Única ({cpf})"
+        self._attr_unique_id = f"iptu_tubarao_valor_taxa_unica_{cpf}"
+        self._attr_name = f"Valor Taxa Única ({cpf})"
         self._attr_unit_of_measurement = "R$"
         self._attr_icon = "mdi:currency-usd"
 
     @property
     def native_value(self):
-        return self.coordinator.data.get("valor_total_taxa_unica")
+        return self.coordinator.data.get("valor_total_unica")
 
 
 class IptuTubaraoSensorValorTotalSemDesconto(CoordinatorEntity, SensorEntity):
-    """Sensor que exibe o valor total sem desconto."""
+    """Sensor para valor total sem desconto."""
 
     def __init__(self, coordinator: IptuTubaraoCoordinator, cpf: str):
         super().__init__(coordinator)
