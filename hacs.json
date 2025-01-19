@@ -1,9 +1,18 @@
 {
-  "name": "IPTU Tubarão",
-  "content_in_root": true,
-  "domains": ["sensor"],
-  "country": ["BR"],
+  "name": "IPTU Tubarão Home Assistant Integration",
+  "content_in_root": false,
+  "domain": "iptu_tubarao",
+  "country": "BR",
   "homeassistant": "2023.1.0",
-  "iot_class": "cloud_polling",
-  "render_readme": true
+  "render_readme": true,
+  "zip_release": false,
+  "filename": "custom_components/iptu_tubarao",
+  "tags": [
+    "Integration",
+    "IPTU Tubarão",
+    "Brazil"
+  ],
+  "authors": [
+    "@dougbaptista"
+  ]
 }
