@@ -15,11 +15,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     """Configura os sensores a partir de uma config_entry."""
     cpf = entry.data.get("cpf")
 
-    # Cria o coordenador
     coordinator = IptuTubaraoCoordinator(hass, cpf=cpf)
     await coordinator.async_config_entry_first_refresh()
 
-    # Define os sensores
     entities = [
         IptuTubaraoSensorCPF(coordinator, cpf),
         IptuTubaraoSensorNome(coordinator, cpf),
@@ -72,7 +70,6 @@ class IptuTubaraoCoordinator(DataUpdateCoordinator):
         soup = BeautifulSoup(response.text, "html.parser")
         _LOGGER.debug("HTML recebido: %s", soup.prettify())
 
-        # Inicializa os dados com valores padrão
         data = {
             "cpf_formatado": self._formatar_cpf(self._cpf),
             "tem_debitos": False,
@@ -83,7 +80,6 @@ class IptuTubaraoCoordinator(DataUpdateCoordinator):
             "valor_total_sem_desconto": 0.0,
         }
 
-        # Verifica se há débitos
         if "Não foram localizados débitos" not in soup.get_text():
             data["tem_debitos"] = True
             data["mensagem"] = "Débitos localizados"
@@ -93,28 +89,35 @@ class IptuTubaraoCoordinator(DataUpdateCoordinator):
                 valores_totais_element = soup.find("td", string="VALORES TOTAIS:")
                 if valores_totais_element:
                     valor_texto = valores_totais_element.find_next("div").text.strip()
-                    data["valores_totais"] = float(valor_texto.replace(".", "").replace(",", "."))
+                    data["valores_totais"] = self._extrair_valor(valor_texto)
 
                 # Captura VALOR TAXA ÚNICA
                 valor_taxa_unica_element = valores_totais_element.find_next("td").find_next("td").find_next("td").find_next("div")
                 if valor_taxa_unica_element:
                     valor_texto = valor_taxa_unica_element.text.strip()
-                    data["valor_total_unica"] = float(valor_texto.replace(".", "").replace(",", "."))
+                    data["valor_total_unica"] = self._extrair_valor(valor_texto)
 
                 # Captura VALOR TOTAL SEM DESCONTO
                 valor_sem_desconto_element = valores_totais_element.find_next("td", style="border-top:#999999 1px solid;")
                 if valor_sem_desconto_element:
                     valor_texto = valor_sem_desconto_element.text.strip()
-                    data["valor_total_sem_desconto"] = float(valor_texto.replace(".", "").replace(",", "."))
+                    data["valor_total_sem_desconto"] = self._extrair_valor(valor_texto)
             except Exception as err:
                 _LOGGER.error("Erro ao processar valores: %s", err)
 
-        # Captura o nome do proprietário
         nome_element = soup.select_one("span.mr-2.d-none.d-lg-inline.text-gray-600.small")
         if nome_element:
             data["proprietario"] = nome_element.get_text(strip=True)
 
         return data
+
+    @staticmethod
+    def _extrair_valor(valor_str):
+        """Converte uma string de valor monetário em float."""
+        try:
+            return float(valor_str.replace(".", "").replace(",", "."))
+        except (ValueError, AttributeError):
+            return 0.0
 
     @staticmethod
     def _formatar_cpf(cpf: str) -> str:
@@ -123,7 +126,6 @@ class IptuTubaraoCoordinator(DataUpdateCoordinator):
         return f"{cpf[:3]}.{cpf[3:6]}.{cpf[6:9]}-{cpf[9:]}"
 
 
-# Sensores
 class IptuTubaraoSensorCPF(CoordinatorEntity, SensorEntity):
     """Sensor para exibir o CPF formatado."""
     def __init__(self, coordinator, cpf):
