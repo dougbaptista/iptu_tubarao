@@ -17,7 +17,8 @@ async def async_setup(hass: HomeAssistant, config: dict):
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     """Configuração feita quando o usuário adiciona via UI."""
     hass.data.setdefault(DOMAIN, {})
-    hass.config_entries.async_setup_platforms(entry, PLATFORMS)
+    hass.data[DOMAIN][entry.entry_id] = entry.data
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 
 
