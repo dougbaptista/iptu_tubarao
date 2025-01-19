@@ -101,10 +101,15 @@ class IptuTubaraoCoordinator(DataUpdateCoordinator):
                     data["valor_total_unica"] = float(valor_texto.replace(".", "").replace(",", "."))
 
                 # Captura VALOR SEM DESCONTO
-                valor_sem_desconto_element = soup.find("td", string="VALOR TOTAL SEM DESCONTO:")
-                if valor_sem_desconto_element:
-                    valor_texto = valor_sem_desconto_element.find_next("td").text.strip()
-                    data["valor_total_sem_desconto"] = float(valor_texto.replace(".", "").replace(",", "."))
+                # Busca o último <td> com a classe "pt-2" e estilo "border-top:#999999 1px solid;"
+                td_elements = soup.find_all('td', class_='pt-2')
+                if td_elements:
+                    td = td_elements[-1]
+                    div = td.find('div', style="border-top:#999999 1px solid;")
+                    if div:
+                        valor_texto = div.get_text(strip=True)
+                        data["valor_total_sem_desconto"] = float(valor_texto.replace(".", "").replace(",", "."))
+
             except Exception as err:
                 _LOGGER.error("Erro ao processar valores: %s", err)
 
