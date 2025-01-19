@@ -48,7 +48,8 @@ class IptuTubaraoCoordinator(DataUpdateCoordinator):
         url = "https://tubarao-sc.prefeituramoderna.com.br/meuiptu/index.php?cidade=tubarao"
 
         try:
-            await self._session.get(url, timeout=30)
+            response = await self._session.get(url, timeout=30)
+            response.raise_for_status()
         except Exception as err:
             _LOGGER.error("Erro ao acessar URL inicial: %s", err)
             raise
@@ -68,31 +69,40 @@ class IptuTubaraoCoordinator(DataUpdateCoordinator):
 
         soup = BeautifulSoup(response.text, "html.parser")
 
-        valores = {"valores_totais": 0, "valor_total_unica": 0, "valor_total_sem_desconto": 0}
+        _LOGGER.debug("HTML recebido: %s", soup.prettify())
+
+        valores = {
+            "valores_totais": 0,
+            "valor_total_unica": 0,
+            "valor_total_sem_desconto": 0,
+        }
         tem_debitos = "Não foram localizados débitos" not in soup.get_text()
 
         if tem_debitos:
             try:
-                # VALORES TOTAIS
-                valores_totais_element = soup.find("td", string=lambda text: "VALORES TOTAIS" in text.upper())
+                # Busca por "VALORES TOTAIS"
+                valores_totais_element = soup.find("td", string=lambda text: text and "VALORES TOTAIS" in text.upper())
                 if valores_totais_element:
                     valores["valores_totais"] = float(
                         valores_totais_element.find_next("td").text.strip().replace(".", "").replace(",", ".")
                     )
+                    _LOGGER.debug("VALORES TOTAIS: %s", valores["valores_totais"])
 
-                # VALOR TOTAL ÚNICA
-                valor_total_unica_element = soup.find("td", string=lambda text: "VALOR TOTAL ÚNICA" in text.upper())
+                # Busca por "VALOR TOTAL ÚNICA"
+                valor_total_unica_element = soup.find("td", string=lambda text: text and "VALOR TOTAL ÚNICA" in text.upper())
                 if valor_total_unica_element:
                     valores["valor_total_unica"] = float(
                         valor_total_unica_element.find_next("td").text.strip().replace(".", "").replace(",", ".")
                     )
+                    _LOGGER.debug("VALOR TOTAL ÚNICA: %s", valores["valor_total_unica"])
 
-                # VALOR TOTAL SEM DESCONTO
-                valor_total_sem_desconto_element = soup.find("td", string=lambda text: "VALOR SEM DESCONTO" in text.upper())
+                # Busca por "VALOR SEM DESCONTO"
+                valor_total_sem_desconto_element = soup.find("td", string=lambda text: text and "VALOR SEM DESCONTO" in text.upper())
                 if valor_total_sem_desconto_element:
                     valores["valor_total_sem_desconto"] = float(
                         valor_total_sem_desconto_element.find_next("td").text.strip().replace(".", "").replace(",", ".")
                     )
+                    _LOGGER.debug("VALOR SEM DESCONTO: %s", valores["valor_total_sem_desconto"])
             except Exception as err:
                 _LOGGER.error("Erro ao processar valores: %s", err)
 
@@ -135,18 +145,6 @@ class IptuTubaraoSensorNome(CoordinatorEntity, SensorEntity):
     @property
     def native_value(self):
         return self.coordinator.data.get("proprietario")
-
-
-class IptuTubaraoSensorStatus(CoordinatorEntity, SensorEntity):
-    def __init__(self, coordinator: IptuTubaraoCoordinator, cpf: str):
-        super().__init__(coordinator)
-        self._attr_unique_id = f"iptu_tubarao_status_{cpf}"
-        self._attr_name = f"IPTU Tubarão Status ({cpf})"
-        self._attr_icon = "mdi:alert"
-
-    @property
-    def native_value(self):
-        return "com_debito" if self.coordinator.data.get("tem_debitos") else "sem_debito"
 
 
 class IptuTubaraoSensorValorTotalSemJuros(CoordinatorEntity, SensorEntity):
