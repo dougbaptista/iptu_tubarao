@@ -12,20 +12,18 @@ from . import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
-DEFAULT_NAME = "IPTU Tubarão"
-
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities):
     """Configura os sensores a partir de uma config_entry."""
-    cpf = entry.data.get("cpf").replace(".", "").replace("-", "")
+    cpf = entry.data.get("cpf")
 
-    coordinator = IptuTubaraoCoordinator(hass, cpf=cpf)
+    coordinator = IptuTubaraoCoordinator(hass, cpf)
     await coordinator.async_config_entry_first_refresh()
 
     async_add_entities([
         IptuTubaraoDebitoSensor(coordinator, cpf),
         IptuTubaraoNomeSensor(coordinator),
-    ], update_before_add=True)
+    ])
 
 
 class IptuTubaraoCoordinator(DataUpdateCoordinator):
@@ -36,7 +34,7 @@ class IptuTubaraoCoordinator(DataUpdateCoordinator):
         super().__init__(
             hass,
             _LOGGER,
-            name="iptu_tubarao_coordinator",
+            name=f"iptu_tubarao_coordinator_{cpf}",
         )
         self._cpf = cpf
         self._session = httpx.AsyncClient(verify=True)
@@ -52,8 +50,7 @@ class IptuTubaraoCoordinator(DataUpdateCoordinator):
         url = "https://tubarao-sc.prefeituramoderna.com.br/meuiptu/index.php?cidade=tubarao"
 
         try:
-            r_get = await self._session.get(url, timeout=30)
-            r_get.raise_for_status()
+            await self._session.get(url, timeout=30)
         except Exception as err:
             _LOGGER.error("Erro ao acessar URL inicial: %s", err)
             raise
@@ -65,18 +62,16 @@ class IptuTubaraoCoordinator(DataUpdateCoordinator):
         }
 
         try:
-            r_post = await self._session.post(url, data=form_data, timeout=30)
-            r_post.raise_for_status()
+            response = await self._session.post(url, data=form_data, timeout=30)
+            response.raise_for_status()
         except Exception as err:
             _LOGGER.error("Erro ao enviar CPF: %s", err)
             raise
 
-        soup = BeautifulSoup(r_post.text, "html.parser")
-
+        soup = BeautifulSoup(response.text, "html.parser")
         tem_debitos = "Não foram localizados débitos" not in soup.get_text()
         mensagem = "Nenhum débito encontrado" if not tem_debitos else "Foi localizado algum débito!"
 
-        # Captura o nome do proprietário
         nome_element = soup.find("div", class_="h5 mb-0 font-weight-bold text-gray-800")
         nome_proprietario = nome_element.get_text(strip=True).split("-")[1].strip() if nome_element else "Desconhecido"
 
@@ -94,25 +89,23 @@ class IptuTubaraoDebitoSensor(CoordinatorEntity, SensorEntity):
         """Inicializa a entidade."""
         super().__init__(coordinator)
         self._cpf = cpf
-        self._attr_unique_id = f"iptu_tubarao_{cpf}"
+        self._attr_unique_id = f"iptu_tubarao_debito_{cpf}"
         self._attr_icon = "mdi:alert-circle-check"
 
     @property
     def name(self):
         """Nome do sensor."""
-        return f"IPTU Tubarão {self._cpf}"
+        return f"IPTU Tubarão Débitos ({self._cpf})"
 
     @property
     def native_value(self):
         """Retorna o estado do sensor."""
-        data = self.coordinator.data
-        return "com_debito" if data.get("tem_debitos") else "sem_debito"
+        return "com_debito" if self.coordinator.data.get("tem_debitos") else "sem_debito"
 
     @property
     def extra_state_attributes(self):
-        """Retorna detalhes extras, como a mensagem."""
-        data = self.coordinator.data
-        return {"mensagem": data.get("mensagem", "")}
+        """Retorna detalhes extras."""
+        return {"mensagem": self.coordinator.data.get("mensagem", "")}
 
 
 class IptuTubaraoNomeSensor(CoordinatorEntity, SensorEntity):
@@ -132,5 +125,4 @@ class IptuTubaraoNomeSensor(CoordinatorEntity, SensorEntity):
     @property
     def native_value(self):
         """Retorna o nome do proprietário."""
-        data = self.coordinator.data
-        return data.get("proprietario", "Desconhecido")
+        return self.coordinator.data.get("proprietario", "Desconhecido")

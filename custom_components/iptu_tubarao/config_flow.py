@@ -17,7 +17,7 @@ class IptuTubaraoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             cpf = user_input["cpf"].replace(".", "").replace("-", "")
             return self.async_create_entry(
-                title="IPTU Tubarão",
+                title=f"IPTU Tubarão ({cpf})",
                 data={"cpf": cpf},
             )
 
