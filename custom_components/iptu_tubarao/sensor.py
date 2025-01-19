@@ -13,15 +13,12 @@ DEFAULT_NAME = "IPTU Tubarão"
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities):
-    """Configura os sensores a partir de uma config_entry."""
     cpf = entry.data.get("cpf")
 
     coordinator = IptuTubaraoCoordinator(hass, cpf=cpf)
 
-    # Faz update inicial
     await coordinator.async_config_entry_first_refresh()
 
-    # Criação dos sensores
     entities = [
         IptuTubaraoSensorCPF(coordinator, cpf),
         IptuTubaraoSensorNome(coordinator, cpf),
@@ -35,10 +32,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
 
 
 class IptuTubaraoCoordinator(DataUpdateCoordinator):
-    """Coordenador que faz a requisição ao site periodicamente."""
-
     def __init__(self, hass: HomeAssistant, cpf: str):
-        """Inicializa."""
         super().__init__(
             hass,
             _LOGGER,
@@ -48,11 +42,9 @@ class IptuTubaraoCoordinator(DataUpdateCoordinator):
         self._session = httpx.AsyncClient(verify=True)
 
     async def _async_update_data(self):
-        """Busca os dados de débitos e nome do proprietário."""
         return await self._fetch_debitos()
 
     async def _fetch_debitos(self):
-        """Faz POST do CPF e coleta dados de débitos e o nome do proprietário."""
         url = "https://tubarao-sc.prefeituramoderna.com.br/meuiptu/index.php?cidade=tubarao"
 
         try:
@@ -76,23 +68,31 @@ class IptuTubaraoCoordinator(DataUpdateCoordinator):
 
         soup = BeautifulSoup(response.text, "html.parser")
 
-        # Processamento dos valores
         valores = {"valores_totais": 0, "valor_total_unica": 0, "valor_total_sem_desconto": 0}
         tem_debitos = "Não foram localizados débitos" not in soup.get_text()
 
         if tem_debitos:
             try:
                 # VALORES TOTAIS
-                valores_totais_element = soup.find("td", string="VALORES TOTAIS:").find_next("td")
-                valores["valores_totais"] = float(valores_totais_element.text.replace(".", "").replace(",", "."))
+                valores_totais_element = soup.find("td", string=lambda text: "VALORES TOTAIS" in text.upper())
+                if valores_totais_element:
+                    valores["valores_totais"] = float(
+                        valores_totais_element.find_next("td").text.strip().replace(".", "").replace(",", ".")
+                    )
 
                 # VALOR TOTAL ÚNICA
-                valor_total_unica_element = soup.find("td", string="VALOR TOTAL ÚNICA:").find_next("td")
-                valores["valor_total_unica"] = float(valor_total_unica_element.text.replace(".", "").replace(",", "."))
+                valor_total_unica_element = soup.find("td", string=lambda text: "VALOR TOTAL ÚNICA" in text.upper())
+                if valor_total_unica_element:
+                    valores["valor_total_unica"] = float(
+                        valor_total_unica_element.find_next("td").text.strip().replace(".", "").replace(",", ".")
+                    )
 
                 # VALOR TOTAL SEM DESCONTO
-                valor_total_sem_desconto_element = soup.find("td", string="VALOR SEM DESCONTO:").find_next("td")
-                valores["valor_total_sem_desconto"] = float(valor_total_sem_desconto_element.text.replace(".", "").replace(",", "."))
+                valor_total_sem_desconto_element = soup.find("td", string=lambda text: "VALOR SEM DESCONTO" in text.upper())
+                if valor_total_sem_desconto_element:
+                    valores["valor_total_sem_desconto"] = float(
+                        valor_total_sem_desconto_element.find_next("td").text.strip().replace(".", "").replace(",", ".")
+                    )
             except Exception as err:
                 _LOGGER.error("Erro ao processar valores: %s", err)
 
@@ -109,14 +109,11 @@ class IptuTubaraoCoordinator(DataUpdateCoordinator):
 
     @staticmethod
     def _formatar_cpf(cpf: str) -> str:
-        """Formata o CPF com pontuações."""
         cpf = cpf.zfill(11)
         return f"{cpf[:3]}.{cpf[3:6]}.{cpf[6:9]}-{cpf[9:]}"
 
 
 class IptuTubaraoSensorCPF(CoordinatorEntity, SensorEntity):
-    """Sensor que exibe o CPF formatado."""
-
     def __init__(self, coordinator: IptuTubaraoCoordinator, cpf: str):
         super().__init__(coordinator)
         self._attr_unique_id = f"iptu_tubarao_cpf_{cpf}"
@@ -129,8 +126,6 @@ class IptuTubaraoSensorCPF(CoordinatorEntity, SensorEntity):
 
 
 class IptuTubaraoSensorNome(CoordinatorEntity, SensorEntity):
-    """Sensor que exibe o nome do proprietário."""
-
     def __init__(self, coordinator: IptuTubaraoCoordinator, cpf: str):
         super().__init__(coordinator)
         self._attr_unique_id = f"iptu_tubarao_nome_{cpf}"
@@ -143,8 +138,6 @@ class IptuTubaraoSensorNome(CoordinatorEntity, SensorEntity):
 
 
 class IptuTubaraoSensorStatus(CoordinatorEntity, SensorEntity):
-    """Sensor que indica o status de débitos."""
-
     def __init__(self, coordinator: IptuTubaraoCoordinator, cpf: str):
         super().__init__(coordinator)
         self._attr_unique_id = f"iptu_tubarao_status_{cpf}"
@@ -157,8 +150,6 @@ class IptuTubaraoSensorStatus(CoordinatorEntity, SensorEntity):
 
 
 class IptuTubaraoSensorValorTotalSemJuros(CoordinatorEntity, SensorEntity):
-    """Sensor para valores totais sem juros."""
-
     def __init__(self, coordinator: IptuTubaraoCoordinator, cpf: str):
         super().__init__(coordinator)
         self._attr_unique_id = f"iptu_tubarao_valores_totais_{cpf}"
@@ -172,8 +163,6 @@ class IptuTubaraoSensorValorTotalSemJuros(CoordinatorEntity, SensorEntity):
 
 
 class IptuTubaraoSensorValorTaxaUnica(CoordinatorEntity, SensorEntity):
-    """Sensor para o valor total à vista."""
-
     def __init__(self, coordinator: IptuTubaraoCoordinator, cpf: str):
         super().__init__(coordinator)
         self._attr_unique_id = f"iptu_tubarao_valor_taxa_unica_{cpf}"
@@ -187,8 +176,6 @@ class IptuTubaraoSensorValorTaxaUnica(CoordinatorEntity, SensorEntity):
 
 
 class IptuTubaraoSensorValorTotalSemDesconto(CoordinatorEntity, SensorEntity):
-    """Sensor para valor total sem desconto."""
-
     def __init__(self, coordinator: IptuTubaraoCoordinator, cpf: str):
         super().__init__(coordinator)
         self._attr_unique_id = f"iptu_tubarao_valor_total_sem_desconto_{cpf}"
