@@ -47,7 +47,7 @@ class IptuTubaraoCoordinator(DataUpdateCoordinator):
         """Busca os dados no site e retorna como dicionário."""
         return await self._fetch_debitos()
 
-    async def _fetch_debitos(self):
+    async def async def _fetch_debitos(self):
         """Faz a requisição ao site e processa os dados."""
         url = "https://tubarao-sc.prefeituramoderna.com.br/meuiptu/index.php?cidade=tubarao"
 
@@ -81,6 +81,42 @@ class IptuTubaraoCoordinator(DataUpdateCoordinator):
             "valor_total_unica": None,
             "valor_total_sem_desconto": None,
         }
+
+        # Verifica se há débitos
+        if "Não foram localizados débitos" not in soup.get_text():
+            data["tem_debitos"] = True
+            data["mensagem"] = "Débitos localizados"
+
+            try:
+                # Captura VALORES TOTAIS
+                valores_totais_element = soup.find("td", string="VALORES TOTAIS:")
+                if valores_totais_element:
+                    valor_texto = valores_totais_element.find_next("td").text.strip()
+                    data["valores_totais"] = float(valor_texto.replace(".", "").replace(",", "."))
+
+                # Captura VALOR TAXA ÚNICA
+                valor_taxa_unica_element = soup.find("td", string="VALOR TOTAL ÚNICA:")
+                if valor_taxa_unica_element:
+                    valor_texto = valor_taxa_unica_element.find_next("td").text.strip()
+                    data["valor_total_unica"] = float(valor_texto.replace(".", "").replace(",", "."))
+
+                # Captura VALOR TOTAL SEM DESCONTO
+                valor_sem_desconto_element = soup.find("td", string="VALOR TOTAL SEM DESCONTO:")
+                if valor_sem_desconto_element:
+                    valor_texto = valor_sem_desconto_element.find_next("td").text.strip()
+                    data["valor_total_sem_desconto"] = float(valor_texto.replace(".", "").replace(",", "."))
+                else:
+                    _LOGGER.warning("Não foi possível localizar o valor sem desconto no HTML.")
+            except Exception as err:
+                _LOGGER.error("Erro ao processar valores: %s", err)
+
+        # Captura o nome do proprietário
+        nome_element = soup.select_one("span.mr-2.d-none.d-lg-inline.text-gray-600.small")
+        if nome_element:
+            data["proprietario"] = nome_element.get_text(strip=True)
+
+        return data
+
 
         # Verifica se há débitos
         if "Não foram localizados débitos" not in soup.get_text():
