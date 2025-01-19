@@ -1,74 +1,50 @@
-# IPTU Tubarão - Componente Customizado para Home Assistant
+# Componente Personalizado: IPTU Tubarão
 
-Este repositório contém um **componente customizado** para o Home Assistant que consulta o site de IPTU da Prefeitura de Tubarão/SC, informando se existe algum débito para determinado CPF.
+Este componente customizado para o [Home Assistant](https://www.home-assistant.io/) permite consultar débitos relacionados ao IPTU do município de Tubarão (SC) diretamente na plataforma. Ele exibe informações como o nome do proprietário, status de débitos e valores detalhados.
 
-> **Atenção**  
-> Este projeto é **apenas um protótipo** e pode precisar de ajustes para lidar com mudanças no site oficial, variações de layout, captchas, sessões, cookies ou outros mecanismos de segurança.  
-> Ele também não garante suporte contínuo caso a prefeitura altere o sistema.
+## Funcionalidades
 
----
+- **CPF Formatado**: Exibe o CPF consultado no formato `XXX.XXX.XXX-XX`.
+- **Nome do Proprietário**: Mostra o nome do titular do imóvel registrado.
+- **Status de Débitos**: Informa se existem ou não débitos pendentes.
+- **Valores Detalhados**:
+  - **Valores Totais (Sem Juros)**: Soma total dos débitos.
+  - **Valor Taxa Única**: Valor para pagamento à vista.
+  - **Valor Total Sem Desconto**: Valor total sem considerar descontos aplicáveis.
 
-## Instalação via HACS
+## Requisitos
 
-1. No Home Assistant, abra **HACS** e vá em **Integrations**.
-2. No canto superior direito, clique no menu de três pontos e depois em **Custom repositories**.
-3. Adicione o repositório deste projeto (URL do seu GitHub) selecionando “Integration” em **Category**.
-4. Depois de adicionar, a integração aparecerá para ser instalada como qualquer outra no HACS.
-5. Reinicie o Home Assistant após a instalação.
+- Home Assistant 2022.7 ou superior.
+- CPF válido e registrado no sistema de IPTU da Prefeitura de Tubarão.
 
----
+## Instalação
+
+1. Copie os arquivos do componente para o diretório `custom_components/iptu_tubarao` na sua instalação do Home Assistant.
+2. Reinicie o Home Assistant.
+3. No menu de **Configurações**, vá até **Dispositivos e Serviços** e clique em **Adicionar Integração**.
+4. Pesquise por "IPTU Tubarão" e insira o CPF a ser consultado.
 
 ## Configuração
 
-1. No Home Assistant, vá em **Configurações** > **Dispositivos e Serviços**.
-2. Clique em **Adicionar Integração** e procure por “IPTU Tubarão”.
-3. Informe seu **CPF** (utilizado pelo site de IPTU).
-4. Opcionalmente, defina um **nome** para este sensor.
-5. Conclua o fluxo de configuração.
+Após a instalação, você pode adicionar a integração via interface do usuário. É necessário fornecer o CPF para configurar o componente.
 
-Após isso, será criado um sensor com estado:
-- `com_debito` se houver débito.
-- `sem_debito` se não houver débito.
+## Sensores Criados
 
-O sensor também traz um atributo `mensagem` com detalhes adicionais fornecidos pelo site.
+- `sensor.iptu_tubarao_cpf`: Exibe o CPF formatado.
+- `sensor.iptu_tubarao_nome`: Mostra o nome do proprietário.
+- `sensor.iptu_tubarao_status`: Indica se há débitos (`com_debito` ou `sem_debito`).
+- `sensor.iptu_tubarao_valores_totais`: Exibe o valor total dos débitos (sem juros).
+- `sensor.iptu_tubarao_valor_taxa_unica`: Valor para pagamento único com desconto.
+- `sensor.iptu_tubarao_valor_total_sem_desconto`: Exibe o valor total sem descontos aplicáveis.
 
----
+## Logs
 
-## Funcionamento Interno (Resumo)
+Os logs podem ser visualizados no Home Assistant para monitorar erros ou verificar o comportamento do componente.
 
-- O componente faz um **POST** do CPF no site da Prefeitura, simulando o preenchimento de formulário.
-- Em seguida, analisa a resposta e busca pelo texto que indica “Não foram localizados débitos” ou similar.
-- Se encontrar, assume que não há débitos (`sem_debito`).
-- Caso contrário, assume que há débito (`com_debito`).
+Para habilitar logs detalhados, adicione o seguinte ao arquivo `configuration.yaml`:
 
----
-
-## Limitações
-
-- **Captchas e Sessões**: Se o site exigir captcha, sessão autenticada ou outro mecanismo, o componente pode falhar.
-- **Frequência de Atualização**: Por padrão, faz um check inicial. Você pode ajustar o `update_interval` no código para consultar diariamente ou na frequência desejada (ajustando o `DataUpdateCoordinator`).
-- **Mudanças no Site**: Qualquer alteração no layout do site pode quebrar o parse do HTML. Caso isso ocorra, será necessário ajustar o código.
-
----
-
-## Roadmap de Melhorias
-
-- [ ] Tornar a coleta de dados mais robusta e tratar eventuais captchas.  
-- [ ] Adicionar suporte a _múltiplos imóveis_ (por exemplo, se a pessoa tiver mais de um).  
-- [ ] Permitir configuração da **frequência** de checagem na interface.  
-- [ ] Lidar com exceções de conexão de forma mais detalhada.
-
----
-
-## Contribuindo
-
-Contribuições são bem-vindas!
-
-1. Faça um _fork_ do repositório.
-2. Crie sua _branch_ com o patch/feature (`git checkout -b minha-feature`).
-3. Faça o _commit_ e _push_ (`git push origin minha-feature`).
-4. Abra um _pull request_ descrevendo suas alterações.
-
----
-
-**Observação**: Este projeto é independente e não possui vínculo oficial com a Prefeitura de Tubarão. Use por sua conta e risco.
+```yaml
+logger:
+  default: warning
+  logs:
+    custom_components.iptu_tubarao: debug
