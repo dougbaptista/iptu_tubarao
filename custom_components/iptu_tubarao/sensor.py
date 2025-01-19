@@ -11,14 +11,15 @@ _LOGGER = logging.getLogger(__name__)
 
 DEFAULT_NAME = "IPTU Tubarão"
 
-
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities):
+    """Configura os sensores a partir de uma config_entry."""
     cpf = entry.data.get("cpf")
 
+    # Cria o coordenador
     coordinator = IptuTubaraoCoordinator(hass, cpf=cpf)
-
     await coordinator.async_config_entry_first_refresh()
 
+    # Define os sensores
     entities = [
         IptuTubaraoSensorCPF(coordinator, cpf),
         IptuTubaraoSensorNome(coordinator, cpf),
@@ -30,8 +31,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
 
     async_add_entities(entities, update_before_add=True)
 
-
 class IptuTubaraoCoordinator(DataUpdateCoordinator):
+    """Coordenador para buscar os dados periodicamente."""
+
     def __init__(self, hass: HomeAssistant, cpf: str):
         super().__init__(
             hass,
@@ -42,25 +44,24 @@ class IptuTubaraoCoordinator(DataUpdateCoordinator):
         self._session = httpx.AsyncClient(verify=True)
 
     async def _async_update_data(self):
+        """Busca os dados no site e retorna como dicionário."""
         return await self._fetch_debitos()
 
     async def _fetch_debitos(self):
+        """Faz a requisição ao site e processa os dados."""
         url = "https://tubarao-sc.prefeituramoderna.com.br/meuiptu/index.php?cidade=tubarao"
 
         try:
-            response = await self._session.get(url, timeout=30)
-            response.raise_for_status()
+            # Acessa a página inicial
+            await self._session.get(url, timeout=30)
         except Exception as err:
             _LOGGER.error("Erro ao acessar URL inicial: %s", err)
             raise
 
-        form_data = {
-            "documento": self._cpf,
-            "inscricao": "",
-            "st_menu": "1",
-        }
+        form_data = {"documento": self._cpf, "inscricao": "", "st_menu": "1"}
 
         try:
+            # Envia o CPF no formulário
             response = await self._session.post(url, data=form_data, timeout=30)
             response.raise_for_status()
         except Exception as err:
@@ -68,66 +69,69 @@ class IptuTubaraoCoordinator(DataUpdateCoordinator):
             raise
 
         soup = BeautifulSoup(response.text, "html.parser")
-
         _LOGGER.debug("HTML recebido: %s", soup.prettify())
 
-        valores = {
+        # Inicializa os dados
+        data = {
+            "cpf_formatado": self._formatar_cpf(self._cpf),
+            "tem_debitos": False,
+            "mensagem": "Nenhum débito encontrado",
+            "proprietario": "Desconhecido",
             "valores_totais": 0,
             "valor_total_unica": 0,
             "valor_total_sem_desconto": 0,
         }
-        tem_debitos = "Não foram localizados débitos" not in soup.get_text()
 
-        if tem_debitos:
+        # Verifica se há débitos
+        if "Não foram localizados débitos" not in soup.get_text():
+            data["tem_debitos"] = True
+            data["mensagem"] = "Débitos localizados"
+
             try:
-                # Busca por "VALORES TOTAIS"
-                valores_totais_element = soup.find("td", string=lambda text: text and "VALORES TOTAIS" in text.upper())
+                # Captura VALORES TOTAIS
+                valores_totais_element = soup.find("td", string="VALORES TOTAIS:")
                 if valores_totais_element:
-                    valores["valores_totais"] = float(
+                    data["valores_totais"] = float(
                         valores_totais_element.find_next("td").text.strip().replace(".", "").replace(",", ".")
                     )
-                    _LOGGER.debug("VALORES TOTAIS: %s", valores["valores_totais"])
 
-                # Busca por "VALOR TOTAL ÚNICA"
-                valor_total_unica_element = soup.find("td", string=lambda text: text and "VALOR TOTAL ÚNICA" in text.upper())
-                if valor_total_unica_element:
-                    valores["valor_total_unica"] = float(
-                        valor_total_unica_element.find_next("td").text.strip().replace(".", "").replace(",", ".")
+                # Captura VALOR TAXA ÚNICA
+                valor_taxa_unica_element = soup.find("td", string="VALOR TOTAL ÚNICA:")
+                if valor_taxa_unica_element:
+                    data["valor_total_unica"] = float(
+                        valor_taxa_unica_element.find_next("td").text.strip().replace(".", "").replace(",", ".")
                     )
-                    _LOGGER.debug("VALOR TOTAL ÚNICA: %s", valores["valor_total_unica"])
 
-                # Busca por "VALOR SEM DESCONTO"
-                valor_total_sem_desconto_element = soup.find("td", string=lambda text: text and "VALOR SEM DESCONTO" in text.upper())
-                if valor_total_sem_desconto_element:
-                    valores["valor_total_sem_desconto"] = float(
-                        valor_total_sem_desconto_element.find_next("td").text.strip().replace(".", "").replace(",", ".")
+                # Captura VALOR SEM DESCONTO
+                valor_sem_desconto_element = soup.find("td", string="VALOR TOTAL SEM DESCONTO:")
+                if valor_sem_desconto_element:
+                    data["valor_total_sem_desconto"] = float(
+                        valor_sem_desconto_element.find_next("td").text.strip().replace(".", "").replace(",", ".")
                     )
-                    _LOGGER.debug("VALOR SEM DESCONTO: %s", valores["valor_total_sem_desconto"])
             except Exception as err:
                 _LOGGER.error("Erro ao processar valores: %s", err)
 
+        # Captura o nome do proprietário
         nome_element = soup.select_one("span.mr-2.d-none.d-lg-inline.text-gray-600.small")
-        nome_proprietario = nome_element.get_text(strip=True) if nome_element else "Desconhecido"
+        if nome_element:
+            data["proprietario"] = nome_element.get_text(strip=True)
 
-        return {
-            "cpf_formatado": self._formatar_cpf(self._cpf),
-            "tem_debitos": tem_debitos,
-            "mensagem": "Nenhum débito encontrado" if not tem_debitos else "Débitos localizados",
-            "proprietario": nome_proprietario,
-            **valores,
-        }
+        return data
 
     @staticmethod
     def _formatar_cpf(cpf: str) -> str:
+        """Formata o CPF no padrão XXX.XXX.XXX-XX."""
         cpf = cpf.zfill(11)
         return f"{cpf[:3]}.{cpf[3:6]}.{cpf[6:9]}-{cpf[9:]}"
 
 
 class IptuTubaraoSensorCPF(CoordinatorEntity, SensorEntity):
-    def __init__(self, coordinator: IptuTubaraoCoordinator, cpf: str):
+    """Sensor para exibir o CPF formatado."""
+
+    def __init__(self, coordinator, cpf):
         super().__init__(coordinator)
         self._attr_unique_id = f"iptu_tubarao_cpf_{cpf}"
-        self._attr_name = f"IPTU Tubarão CPF ({cpf})"
+        self._attr_name = "CPF Formatado"
         self._attr_icon = "mdi:account"
 
     @property
@@ -136,10 +140,12 @@ class IptuTubaraoSensorCPF(CoordinatorEntity, SensorEntity):
 
 
 class IptuTubaraoSensorNome(CoordinatorEntity, SensorEntity):
-    def __init__(self, coordinator: IptuTubaraoCoordinator, cpf: str):
+    """Sensor para exibir o nome do proprietário."""
+
+    def __init__(self, coordinator, cpf):
         super().__init__(coordinator)
         self._attr_unique_id = f"iptu_tubarao_nome_{cpf}"
-        self._attr_name = f"IPTU Tubarão Nome ({cpf})"
+        self._attr_name = "Nome do Proprietário"
         self._attr_icon = "mdi:account-badge"
 
     @property
@@ -147,11 +153,27 @@ class IptuTubaraoSensorNome(CoordinatorEntity, SensorEntity):
         return self.coordinator.data.get("proprietario")
 
 
+class IptuTubaraoSensorStatus(CoordinatorEntity, SensorEntity):
+    """Sensor para exibir o status de débitos."""
+
+    def __init__(self, coordinator, cpf):
+        super().__init__(coordinator)
+        self._attr_unique_id = f"iptu_tubarao_status_{cpf}"
+        self._attr_name = "Status de Débitos"
+        self._attr_icon = "mdi:alert"
+
+    @property
+    def native_value(self):
+        return "com_debito" if self.coordinator.data.get("tem_debitos") else "sem_debito"
+
+
 class IptuTubaraoSensorValorTotalSemJuros(CoordinatorEntity, SensorEntity):
-    def __init__(self, coordinator: IptuTubaraoCoordinator, cpf: str):
+    """Sensor para VALORES TOTAIS."""
+
+    def __init__(self, coordinator, cpf):
         super().__init__(coordinator)
         self._attr_unique_id = f"iptu_tubarao_valores_totais_{cpf}"
-        self._attr_name = f"Valores Totais Sem Juros ({cpf})"
+        self._attr_name = "Valores Totais (Sem Juros)"
         self._attr_unit_of_measurement = "R$"
         self._attr_icon = "mdi:currency-usd"
 
@@ -161,10 +183,12 @@ class IptuTubaraoSensorValorTotalSemJuros(CoordinatorEntity, SensorEntity):
 
 
 class IptuTubaraoSensorValorTaxaUnica(CoordinatorEntity, SensorEntity):
-    def __init__(self, coordinator: IptuTubaraoCoordinator, cpf: str):
+    """Sensor para VALOR TAXA ÚNICA."""
+
+    def __init__(self, coordinator, cpf):
         super().__init__(coordinator)
         self._attr_unique_id = f"iptu_tubarao_valor_taxa_unica_{cpf}"
-        self._attr_name = f"Valor Taxa Única ({cpf})"
+        self._attr_name = "Valor Taxa Única"
         self._attr_unit_of_measurement = "R$"
         self._attr_icon = "mdi:currency-usd"
 
@@ -174,10 +198,12 @@ class IptuTubaraoSensorValorTaxaUnica(CoordinatorEntity, SensorEntity):
 
 
 class IptuTubaraoSensorValorTotalSemDesconto(CoordinatorEntity, SensorEntity):
-    def __init__(self, coordinator: IptuTubaraoCoordinator, cpf: str):
+    """Sensor para VALOR SEM DESCONTO."""
+
+    def __init__(self, coordinator, cpf):
         super().__init__(coordinator)
         self._attr_unique_id = f"iptu_tubarao_valor_total_sem_desconto_{cpf}"
-        self._attr_name = f"Valor Total Sem Desconto ({cpf})"
+        self._attr_name = "Valor Total Sem Desconto"
         self._attr_unit_of_measurement = "R$"
         self._attr_icon = "mdi:currency-usd"
 
