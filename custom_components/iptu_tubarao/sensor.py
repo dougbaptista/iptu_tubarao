@@ -31,6 +31,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
 
     async_add_entities(entities, update_before_add=True)
 
+
 class IptuTubaraoCoordinator(DataUpdateCoordinator):
     """Coordenador para buscar os dados periodicamente."""
 
@@ -71,15 +72,15 @@ class IptuTubaraoCoordinator(DataUpdateCoordinator):
         soup = BeautifulSoup(response.text, "html.parser")
         _LOGGER.debug("HTML recebido: %s", soup.prettify())
 
-        # Inicializa os dados
+        # Inicializa os dados com valores padrão
         data = {
             "cpf_formatado": self._formatar_cpf(self._cpf),
             "tem_debitos": False,
             "mensagem": "Nenhum débito encontrado",
             "proprietario": "Desconhecido",
-            "valores_totais": None,
-            "valor_total_unica": None,
-            "valor_total_sem_desconto": None,
+            "valores_totais": 0.0,
+            "valor_total_unica": 0.0,
+            "valor_total_sem_desconto": 0.0,
         }
 
         # Verifica se há débitos
@@ -94,45 +95,16 @@ class IptuTubaraoCoordinator(DataUpdateCoordinator):
                     valor_texto = valores_totais_element.find_next("div").text.strip()
                     data["valores_totais"] = float(valor_texto.replace(".", "").replace(",", "."))
 
-                # Captura VALOR TOTAL SEM DESCONTO
-                valor_sem_desconto_element = valores_totais_element.find_next("td").find_next("td").find_next("td").find_next("div")
-                if valor_sem_desconto_element:
-                    valor_texto = valor_sem_desconto_element.text.strip()
-                    data["valor_total_sem_desconto"] = float(valor_texto.replace(".", "").replace(",", "."))
-            except Exception as err:
-                _LOGGER.error("Erro ao processar valores: %s", err)
-
-        # Captura o nome do proprietário
-        nome_element = soup.select_one("span.mr-2.d-none.d-lg-inline.text-gray-600.small")
-        if nome_element:
-            data["proprietario"] = nome_element.get_text(strip=True)
-
-        return data
-
-
-
-        # Verifica se há débitos
-        if "Não foram localizados débitos" not in soup.get_text():
-            data["tem_debitos"] = True
-            data["mensagem"] = "Débitos localizados"
-
-            try:
-                # Captura VALORES TOTAIS
-                valores_totais_element = soup.find("td", string="VALORES TOTAIS:")
-                if valores_totais_element:
-                    valor_texto = valores_totais_element.find_next("td").text.strip()
-                    data["valores_totais"] = float(valor_texto.replace(".", "").replace(",", "."))
-
                 # Captura VALOR TAXA ÚNICA
-                valor_taxa_unica_element = soup.find("td", string="VALOR TOTAL ÚNICA:")
+                valor_taxa_unica_element = valores_totais_element.find_next("td").find_next("td").find_next("td").find_next("div")
                 if valor_taxa_unica_element:
-                    valor_texto = valor_taxa_unica_element.find_next("td").text.strip()
+                    valor_texto = valor_taxa_unica_element.text.strip()
                     data["valor_total_unica"] = float(valor_texto.replace(".", "").replace(",", "."))
 
-                # Captura VALOR SEM DESCONTO
-                valor_sem_desconto_element = soup.find("td", string="VALOR TOTAL SEM DESCONTO:")
+                # Captura VALOR TOTAL SEM DESCONTO
+                valor_sem_desconto_element = valores_totais_element.find_next("td", style="border-top:#999999 1px solid;")
                 if valor_sem_desconto_element:
-                    valor_texto = valor_sem_desconto_element.find_next("td").text.strip()
+                    valor_texto = valor_sem_desconto_element.text.strip()
                     data["valor_total_sem_desconto"] = float(valor_texto.replace(".", "").replace(",", "."))
             except Exception as err:
                 _LOGGER.error("Erro ao processar valores: %s", err)
@@ -231,4 +203,3 @@ class IptuTubaraoSensorValorTotalSemDesconto(CoordinatorEntity, SensorEntity):
     @property
     def native_value(self):
         return self.coordinator.data.get("valor_total_sem_desconto")
-
