@@ -1,11 +1,10 @@
-"""Sensor que consulta se há débitos no IPTU Tubarão."""
+"""Sensor que consulta se há débitos no IPTU Tubarão e captura o nome do proprietário."""
 import logging
 import httpx
 from bs4 import BeautifulSoup
 
 from homeassistant.components.sensor import SensorEntity
-from homeassistant.helpers.entity import DeviceInfo
-from homeassistant.helpers.update_coordinator import CoordinatorEntity, DataUpdateCoordinator
+from homeassistant.helpers.entity import DeviceInfo, CoordinatorEntity, DataUpdateCoordinator
 from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
 
@@ -17,14 +16,16 @@ DEFAULT_NAME = "IPTU Tubarão"
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities):
-    """Configura o sensor a partir de uma config_entry."""
+    """Configura os sensores a partir de uma config_entry."""
     cpf = entry.data.get("cpf").replace(".", "").replace("-", "")
-    name = entry.data.get("name", DEFAULT_NAME)
 
     coordinator = IptuTubaraoCoordinator(hass, cpf=cpf)
     await coordinator.async_config_entry_first_refresh()
 
-    async_add_entities([IptuTubaraoSensor(coordinator, name, cpf)], update_before_add=True)
+    async_add_entities([
+        IptuTubaraoDebitoSensor(coordinator, cpf),
+        IptuTubaraoNomeSensor(coordinator),
+    ], update_before_add=True)
 
 
 class IptuTubaraoCoordinator(DataUpdateCoordinator):
@@ -75,57 +76,61 @@ class IptuTubaraoCoordinator(DataUpdateCoordinator):
         tem_debitos = "Não foram localizados débitos" not in soup.get_text()
         mensagem = "Nenhum débito encontrado" if not tem_debitos else "Foi localizado algum débito!"
 
-        proprietario = soup.find("span", id="proprietario")
-        proprietario_nome = proprietario.get_text(strip=True) if proprietario else "Não identificado"
+        # Captura o nome do proprietário
+        nome_element = soup.find("div", class_="h5 mb-0 font-weight-bold text-gray-800")
+        nome_proprietario = nome_element.get_text(strip=True).split("-")[1].strip() if nome_element else "Desconhecido"
 
         return {
             "tem_debitos": tem_debitos,
             "mensagem": mensagem,
-            "proprietario": proprietario_nome,
+            "proprietario": nome_proprietario,
         }
 
 
-class IptuTubaraoSensor(CoordinatorEntity, SensorEntity):
-    """Entidade Sensor que informa se há débitos ou não."""
+class IptuTubaraoDebitoSensor(CoordinatorEntity, SensorEntity):
+    """Sensor que informa se há débitos."""
 
-    _attr_icon = "mdi:home-alert"
-
-    def __init__(self, coordinator: IptuTubaraoCoordinator, name: str, cpf: str):
+    def __init__(self, coordinator: IptuTubaraoCoordinator, cpf: str):
         """Inicializa a entidade."""
         super().__init__(coordinator)
         self._cpf = cpf
-        self._name = name
         self._attr_unique_id = f"iptu_tubarao_{cpf}"
+        self._attr_icon = "mdi:alert-circle-check"
 
     @property
     def name(self):
         """Nome do sensor."""
-        return self._name
+        return f"IPTU Tubarão {self._cpf}"
 
     @property
     def native_value(self):
-        """Retorna o estado do sensor: 'com_debito' ou 'sem_debito'."""
+        """Retorna o estado do sensor."""
         data = self.coordinator.data
-        if not data:
-            return None
         return "com_debito" if data.get("tem_debitos") else "sem_debito"
 
     @property
     def extra_state_attributes(self):
-        """Retorna detalhes extras, como a mensagem e o nome do proprietário."""
-        if not self.coordinator.data:
-            return {}
-        return {
-            "mensagem": self.coordinator.data.get("mensagem", ""),
-            "proprietario": self.coordinator.data.get("proprietario", "Não identificado"),
-        }
+        """Retorna detalhes extras, como a mensagem."""
+        data = self.coordinator.data
+        return {"mensagem": data.get("mensagem", "")}
+
+
+class IptuTubaraoNomeSensor(CoordinatorEntity, SensorEntity):
+    """Sensor que informa o nome do proprietário."""
+
+    def __init__(self, coordinator: IptuTubaraoCoordinator):
+        """Inicializa a entidade."""
+        super().__init__(coordinator)
+        self._attr_unique_id = "iptu_tubarao_nome"
+        self._attr_icon = "mdi:account"
 
     @property
-    def device_info(self) -> DeviceInfo:
-        """Agrupa como dispositivo no Home Assistant."""
-        return DeviceInfo(
-            identifiers={(DOMAIN, self._cpf)},
-            name=f"IPTU Tubarão - CPF {self._cpf}",
-            manufacturer="Prefeitura de Tubarão",
-            model="Consulta IPTU Online",
-        )
+    def name(self):
+        """Nome do sensor."""
+        return "IPTU Tubarão Nome"
+
+    @property
+    def native_value(self):
+        """Retorna o nome do proprietário."""
+        data = self.coordinator.data
+        return data.get("proprietario", "Desconhecido")
