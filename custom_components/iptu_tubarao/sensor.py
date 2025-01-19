@@ -30,6 +30,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         IptuTubaraoSensorStatus(coordinator, cpf)
     ]
 
+    # Adicionar sensores de valores somente se houver débitos
     if coordinator.data.get("tem_debitos"):
         entities.extend([
             IptuTubaraoSensorValoresTotais(coordinator, cpf),
@@ -37,6 +38,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         ])
 
     async_add_entities(entities, update_before_add=True)
+
 
 class IptuTubaraoCoordinator(DataUpdateCoordinator):
     """Coordenador que faz a requisição ao site periodicamente."""
@@ -92,7 +94,7 @@ class IptuTubaraoCoordinator(DataUpdateCoordinator):
                 valores_totais_element = soup.select_one("td.text-nowrap div[align='right']")
                 valores_totais = float(valores_totais_element.text.replace(".", "").replace(",", ".")) if valores_totais_element else 0
 
-                valor_total_unica_element = soup.select("td[align='right']")[-1]
+                valor_total_unica_element = soup.select("td.d-print-table-cell b div[align='right']")[-1]
                 valor_total_unica = float(valor_total_unica_element.text.replace(".", "").replace(",", ".")) if valor_total_unica_element else 0
             except Exception as err:
                 _LOGGER.error("Erro ao processar valores de débitos: %s", err)
@@ -109,7 +111,6 @@ class IptuTubaraoCoordinator(DataUpdateCoordinator):
             "valores_totais": valores_totais,
             "valor_total_unica": valor_total_unica,
         }
-
 
     @staticmethod
     def _formatar_cpf(cpf: str) -> str:
@@ -152,70 +153,71 @@ class IptuTubaraoSensorNome(CoordinatorEntity, SensorEntity):
         return self.coordinator.data.get("proprietario")
 
 
-    class IptuTubaraoSensorStatus(CoordinatorEntity, SensorEntity):
-        """Sensor que indica o status de débitos."""
+class IptuTubaraoSensorStatus(CoordinatorEntity, SensorEntity):
+    """Sensor que indica o status de débitos."""
 
-        def __init__(self, coordinator: IptuTubaraoCoordinator, cpf: str):
-            """Inicializa o sensor."""
-            super().__init__(coordinator)
-            self._cpf = cpf
-            self._attr_unique_id = f"iptu_tubarao_status_{cpf}"
-            self._attr_name = f"IPTU Tubarão Status ({cpf})"
-            self._attr_icon = "mdi:alert"
+    def __init__(self, coordinator: IptuTubaraoCoordinator, cpf: str):
+        """Inicializa o sensor."""
+        super().__init__(coordinator)
+        self._cpf = cpf
+        self._attr_unique_id = f"iptu_tubarao_status_{cpf}"
+        self._attr_name = f"IPTU Tubarão Status ({cpf})"
+        self._attr_icon = "mdi:alert"
 
-        @property
-        def native_value(self):
-            """Retorna o status de débitos."""
-            return "com_debito" if self.coordinator.data.get("tem_debitos") else "sem_debito"
+    @property
+    def native_value(self):
+        """Retorna o status de débitos."""
+        return "com_debito" if self.coordinator.data.get("tem_debitos") else "sem_debito"
 
-        @property
-        def extra_state_attributes(self):
-            """Retorna detalhes extras, como a mensagem."""
-            return {
-                "mensagem": self.coordinator.data.get("mensagem", "")
-            }
+    @property
+    def extra_state_attributes(self):
+        """Retorna detalhes extras, como a mensagem."""
+        return {
+            "mensagem": self.coordinator.data.get("mensagem", "")
+        }
 
-        @property
-        def device_info(self) -> DeviceInfo:
-            """Agrupa como dispositivo no Home Assistant."""
-            return DeviceInfo(
-                identifiers={(DOMAIN, self._cpf)},
-                name=f"IPTU Tubarão ({self._cpf})",
-                manufacturer="Prefeitura de Tubarão",
-                model="Consulta IPTU Online",
-            )
-
-    class IptuTubaraoSensorValoresTotais(CoordinatorEntity, SensorEntity):
-        """Sensor que exibe os valores totais de débitos."""
-
-        def __init__(self, coordinator: IptuTubaraoCoordinator, cpf: str):
-            """Inicializa o sensor."""
-            super().__init__(coordinator)
-            self._cpf = cpf
-            self._attr_unique_id = f"iptu_tubarao_valores_totais_{cpf}"
-            self._attr_name = f"Valores Totais ({cpf})"
-            self._attr_unit_of_measurement = "R$"
-            self._attr_icon = "mdi:currency-usd"
-
-        @property
-        def native_value(self):
-            """Retorna os valores totais."""
-            return self.coordinator.data.get("valores_totais")
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Agrupa como dispositivo no Home Assistant."""
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._cpf)},
+            name=f"IPTU Tubarão ({self._cpf})",
+            manufacturer="Prefeitura de Tubarão",
+            model="Consulta IPTU Online",
+        )
 
 
-    class IptuTubaraoSensorValorTotalUnica(CoordinatorEntity, SensorEntity):
-        """Sensor que exibe o valor total à vista."""
+class IptuTubaraoSensorValoresTotais(CoordinatorEntity, SensorEntity):
+    """Sensor que exibe os valores totais de débitos."""
 
-        def __init__(self, coordinator: IptuTubaraoCoordinator, cpf: str):
-            """Inicializa o sensor."""
-            super().__init__(coordinator)
-            self._cpf = cpf
-            self._attr_unique_id = f"iptu_tubarao_valor_total_unica_{cpf}"
-            self._attr_name = f"Valor Total Única ({cpf})"
-            self._attr_unit_of_measurement = "R$"
-            self._attr_icon = "mdi:currency-usd"
+    def __init__(self, coordinator: IptuTubaraoCoordinator, cpf: str):
+        """Inicializa o sensor."""
+        super().__init__(coordinator)
+        self._cpf = cpf
+        self._attr_unique_id = f"iptu_tubarao_valores_totais_{cpf}"
+        self._attr_name = f"Valores Totais ({cpf})"
+        self._attr_unit_of_measurement = "R$"
+        self._attr_icon = "mdi:currency-usd"
 
-        @property
-        def native_value(self):
-            """Retorna o valor total à vista."""
-            return self.coordinator.data.get("valor_total_unica")
+    @property
+    def native_value(self):
+        """Retorna os valores totais."""
+        return self.coordinator.data.get("valores_totais")
+
+
+class IptuTubaraoSensorValorTotalUnica(CoordinatorEntity, SensorEntity):
+    """Sensor que exibe o valor total à vista."""
+
+    def __init__(self, coordinator: IptuTubaraoCoordinator, cpf: str):
+        """Inicializa o sensor."""
+        super().__init__(coordinator)
+        self._cpf = cpf
+        self._attr_unique_id = f"iptu_tubarao_valor_total_unica_{cpf}"
+        self._attr_name = f"Valor Total Única ({cpf})"
+        self._attr_unit_of_measurement = "R$"
+        self._attr_icon = "mdi:currency-usd"
+
+    @property
+    def native_value(self):
+        """Retorna o valor total à vista."""
+        return self.coordinator.data.get("valor_total_unica")
