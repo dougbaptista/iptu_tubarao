@@ -91,22 +91,14 @@ class IptuTubaraoCoordinator(DataUpdateCoordinator):
                 # Captura VALORES TOTAIS
                 valores_totais_element = soup.find("td", string="VALORES TOTAIS:")
                 if valores_totais_element:
-                    valor_texto = valores_totais_element.find_next("td").text.strip()
+                    valor_texto = valores_totais_element.find_next("div").text.strip()
                     data["valores_totais"] = float(valor_texto.replace(".", "").replace(",", "."))
 
-                # Captura VALOR TAXA ÚNICA
-                valor_taxa_unica_element = soup.find("td", string="VALOR TOTAL ÚNICA:")
-                if valor_taxa_unica_element:
-                    valor_texto = valor_taxa_unica_element.find_next("td").text.strip()
-                    data["valor_total_unica"] = float(valor_texto.replace(".", "").replace(",", "."))
-
                 # Captura VALOR TOTAL SEM DESCONTO
-                valor_sem_desconto_element = soup.find("td", string="VALOR TOTAL SEM DESCONTO:")
+                valor_sem_desconto_element = valores_totais_element.find_next("td").find_next("td").find_next("td").find_next("div")
                 if valor_sem_desconto_element:
-                    valor_texto = valor_sem_desconto_element.find_next("td").text.strip()
+                    valor_texto = valor_sem_desconto_element.text.strip()
                     data["valor_total_sem_desconto"] = float(valor_texto.replace(".", "").replace(",", "."))
-                else:
-                    _LOGGER.warning("Não foi possível localizar o valor sem desconto no HTML.")
             except Exception as err:
                 _LOGGER.error("Erro ao processar valores: %s", err)
 
@@ -116,6 +108,7 @@ class IptuTubaraoCoordinator(DataUpdateCoordinator):
             data["proprietario"] = nome_element.get_text(strip=True)
 
         return data
+
 
 
         # Verifica se há débitos
@@ -238,3 +231,4 @@ class IptuTubaraoSensorValorTotalSemDesconto(CoordinatorEntity, SensorEntity):
     @property
     def native_value(self):
         return self.coordinator.data.get("valor_total_sem_desconto")
+
