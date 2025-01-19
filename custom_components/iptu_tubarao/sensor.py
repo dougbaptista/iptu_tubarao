@@ -47,7 +47,7 @@ class IptuTubaraoCoordinator(DataUpdateCoordinator):
         """Busca os dados no site e retorna como dicionário."""
         return await self._fetch_debitos()
 
-    async def async def _fetch_debitos(self):
+    async def _fetch_debitos(self):
         """Faz a requisição ao site e processa os dados."""
         url = "https://tubarao-sc.prefeituramoderna.com.br/meuiptu/index.php?cidade=tubarao"
 
