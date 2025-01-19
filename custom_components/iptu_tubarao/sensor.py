@@ -4,7 +4,10 @@ import httpx
 from bs4 import BeautifulSoup
 
 from homeassistant.components.sensor import SensorEntity
-from homeassistant.helpers.entity import DeviceInfo, CoordinatorEntity, DataUpdateCoordinator
+from homeassistant.helpers.update_coordinator import (
+    CoordinatorEntity,
+    DataUpdateCoordinator,
+)
 from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
 
@@ -21,8 +24,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     await coordinator.async_config_entry_first_refresh()
 
     async_add_entities([
-        IptuTubaraoDebitoSensor(coordinator, cpf),
+        IptuTubaraoCpfSensor(coordinator, cpf),
         IptuTubaraoNomeSensor(coordinator),
+        IptuTubaraoStatusSensor(coordinator),
     ])
 
 
@@ -76,40 +80,42 @@ class IptuTubaraoCoordinator(DataUpdateCoordinator):
         nome_proprietario = nome_element.get_text(strip=True).split("-")[1].strip() if nome_element else "Desconhecido"
 
         return {
+            "cpf_formatado": self._formatar_cpf(self._cpf),
             "tem_debitos": tem_debitos,
             "mensagem": mensagem,
             "proprietario": nome_proprietario,
         }
 
+    @staticmethod
+    def _formatar_cpf(cpf: str) -> str:
+        """Formata o CPF com pontuações."""
+        cpf = cpf.zfill(11)  # Adiciona zeros à esquerda, se necessário
+        return f"{cpf[:3]}.{cpf[3:6]}.{cpf[6:9]}-{cpf[9:]}"
 
-class IptuTubaraoDebitoSensor(CoordinatorEntity, SensorEntity):
-    """Sensor que informa se há débitos."""
+
+class IptuTubaraoCpfSensor(CoordinatorEntity, SensorEntity):
+    """Sensor que exibe o CPF formatado."""
 
     def __init__(self, coordinator: IptuTubaraoCoordinator, cpf: str):
         """Inicializa a entidade."""
         super().__init__(coordinator)
         self._cpf = cpf
-        self._attr_unique_id = f"iptu_tubarao_debito_{cpf}"
-        self._attr_icon = "mdi:alert-circle-check"
+        self._attr_unique_id = f"iptu_tubarao_cpf_{cpf}"
+        self._attr_icon = "mdi:account-card-details"
 
     @property
     def name(self):
         """Nome do sensor."""
-        return f"IPTU Tubarão Débitos ({self._cpf})"
+        return "IPTU Tubarão CPF"
 
     @property
     def native_value(self):
-        """Retorna o estado do sensor."""
-        return "com_debito" if self.coordinator.data.get("tem_debitos") else "sem_debito"
-
-    @property
-    def extra_state_attributes(self):
-        """Retorna detalhes extras."""
-        return {"mensagem": self.coordinator.data.get("mensagem", "")}
+        """Retorna o CPF formatado."""
+        return self.coordinator.data.get("cpf_formatado", "Não informado")
 
 
 class IptuTubaraoNomeSensor(CoordinatorEntity, SensorEntity):
-    """Sensor que informa o nome do proprietário."""
+    """Sensor que exibe o nome do proprietário."""
 
     def __init__(self, coordinator: IptuTubaraoCoordinator):
         """Inicializa a entidade."""
@@ -126,3 +132,28 @@ class IptuTubaraoNomeSensor(CoordinatorEntity, SensorEntity):
     def native_value(self):
         """Retorna o nome do proprietário."""
         return self.coordinator.data.get("proprietario", "Desconhecido")
+
+
+class IptuTubaraoStatusSensor(CoordinatorEntity, SensorEntity):
+    """Sensor que exibe o status de débitos."""
+
+    def __init__(self, coordinator: IptuTubaraoCoordinator):
+        """Inicializa a entidade."""
+        super().__init__(coordinator)
+        self._attr_unique_id = "iptu_tubarao_status"
+        self._attr_icon = "mdi:alert-circle-check"
+
+    @property
+    def name(self):
+        """Nome do sensor."""
+        return "IPTU Tubarão Status"
+
+    @property
+    def native_value(self):
+        """Retorna o status de débitos."""
+        return "com_debito" if self.coordinator.data.get("tem_debitos") else "sem_debito"
+
+    @property
+    def extra_state_attributes(self):
+        """Retorna detalhes extras."""
+        return {"mensagem": self.coordinator.data.get("mensagem", "")}
