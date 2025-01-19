@@ -77,9 +77,9 @@ class IptuTubaraoCoordinator(DataUpdateCoordinator):
             "tem_debitos": False,
             "mensagem": "Nenhum débito encontrado",
             "proprietario": "Desconhecido",
-            "valores_totais": None,
-            "valor_total_unica": None,
-            "valor_total_sem_desconto": None,
+            "valores_totais": 0.0,
+            "valor_total_unica": 0.0,
+            "valor_total_sem_desconto": 0.0,
         }
 
         # Verifica se há débitos
