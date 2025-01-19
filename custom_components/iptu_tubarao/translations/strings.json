@@ -11,7 +11,8 @@
           }
       },
       "error": {
-          "cpf_exists": "Esse CPF já está configurado."
+          "cpf_exists": "Esse CPF já está configurado.",
+          "invalid_cpf": "As informações de acesso estão inválidas."
       }
   },
   "options": {

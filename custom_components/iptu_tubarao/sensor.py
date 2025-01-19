@@ -70,6 +70,12 @@ class IptuTubaraoCoordinator(DataUpdateCoordinator):
         try:
             response = await self._session.post(url, data=form_data, timeout=30)
             response.raise_for_status()
+            
+            # Verifica se o CPF é inválido
+            if "As informações de acesso estão inválidas." in response.text:
+                _LOGGER.error("CPF inválido fornecido: %s", self._cpf)
+                raise ValueError("As informações de acesso estão inválidas.")
+
         except Exception as err:
             _LOGGER.error("Erro ao enviar CPF: %s", err)
             raise
