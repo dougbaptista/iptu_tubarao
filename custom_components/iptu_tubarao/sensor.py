@@ -1,6 +1,7 @@
 import logging
 import httpx
 from bs4 import BeautifulSoup
+from datetime import timedelta
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity, DataUpdateCoordinator
@@ -15,7 +16,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     """Configura os sensores a partir de uma config_entry."""
     cpf = entry.data.get("cpf")
 
-    # Cria o coordenador
+    # Cria o coordenador com atualização diária
     coordinator = IptuTubaraoCoordinator(hass, cpf=cpf)
     await coordinator.async_config_entry_first_refresh()
 
@@ -39,6 +40,7 @@ class IptuTubaraoCoordinator(DataUpdateCoordinator):
             hass,
             _LOGGER,
             name=f"iptu_tubarao_coordinator_{cpf}",
+            update_interval=timedelta(days=1),  # Atualiza uma vez por dia
         )
         self._cpf = cpf
         self._session = httpx.AsyncClient(verify=True)
@@ -101,7 +103,6 @@ class IptuTubaraoCoordinator(DataUpdateCoordinator):
                     data["valor_total_unica"] = float(valor_texto.replace(".", "").replace(",", "."))
 
                 # Captura VALOR SEM DESCONTO
-                # Busca o último <td> com a classe "pt-2" e estilo "border-top:#999999 1px solid;"
                 td_elements = soup.find_all('td', class_='pt-2')
                 if td_elements:
                     td = td_elements[-1]
