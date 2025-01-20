@@ -1,7 +1,7 @@
 import logging
 import httpx
 from bs4 import BeautifulSoup
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity, DataUpdateCoordinator
@@ -28,6 +28,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         IptuTubaraoSensorValorTotalSemJuros(coordinator, cpf),
         IptuTubaraoSensorValorTaxaUnica(coordinator, cpf),
         IptuTubaraoSensorValorTotalSemDesconto(coordinator, cpf),
+        IptuTubaraoSensorProximaDataVencimento(coordinator, cpf),
     ]
 
     async_add_entities(entities, update_before_add=True)
@@ -82,6 +83,7 @@ class IptuTubaraoCoordinator(DataUpdateCoordinator):
             "valores_totais": 0.0,
             "valor_total_unica": 0.0,
             "valor_total_sem_desconto": 0.0,
+            "proxima_data_vencimento": None,
         }
 
         # Verifica se há débitos
@@ -110,6 +112,25 @@ class IptuTubaraoCoordinator(DataUpdateCoordinator):
                     if div:
                         valor_texto = div.get_text(strip=True)
                         data["valor_total_sem_desconto"] = float(valor_texto.replace(".", "").replace(",", "."))
+
+                # Captura todas as datas de vencimento
+                datas = []
+                for td in td_elements:
+                    date_div = td.find("div", align="center")
+                    if date_div:
+                        date_str = date_div.get_text(strip=True)
+                        try:
+                            date_obj = datetime.strptime(date_str, "%d/%m/%Y")
+                            datas.append(date_obj)
+                        except ValueError:
+                            continue
+
+                # Filtra datas futuras ou iguais a hoje e encontra a menor
+                hoje = datetime.today()
+                futuras = [d for d in datas if d >= hoje]
+                if futuras:
+                    proxima_data = min(futuras)
+                    data["proxima_data_vencimento"] = proxima_data.strftime("%d/%m/%Y")
 
             except Exception as err:
                 _LOGGER.error("Erro ao processar valores: %s", err)
@@ -208,3 +229,16 @@ class IptuTubaraoSensorValorTotalSemDesconto(CoordinatorEntity, SensorEntity):
     @property
     def native_value(self):
         return self.coordinator.data.get("valor_total_sem_desconto")
+
+
+class IptuTubaraoSensorProximaDataVencimento(CoordinatorEntity, SensorEntity):
+    """Sensor para a próxima data de vencimento."""
+    def __init__(self, coordinator, cpf):
+        super().__init__(coordinator)
+        self._attr_unique_id = f"iptu_tubarao_proxima_data_vencimento_{cpf}"
+        self._attr_name = "Próxima Data de Vencimento"
+        self._attr_icon = "mdi:calendar"
+
+    @property
+    def native_value(self):
+        return self.coordinator.data.get("proxima_data_vencimento")
